@@ -38,7 +38,7 @@ jobs:
         run: |
           mkdir -p release
 
-          DYLIB=$(find .theos -name "ReturnYTCast.dylib" -type f | head -1)
+          DYLIB=$(find .theos -name "ReturnYTCast.dylib" -type f ! -path "*.dSYM/*" | head -1)
 
           if [ -z "$DYLIB" ]; then
             echo "ReturnYTCast.dylib not found"
