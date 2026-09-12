@@ -2,15 +2,13 @@ name: Build ReturnYTCast
 
 on:
   workflow_dispatch:
-  push:
-    tags:
-      - "v*"
 
 permissions:
   contents: write
 
 jobs:
   build:
+    name: ReturnYTCast
     runs-on: macos-latest
 
     steps:
@@ -26,11 +24,17 @@ jobs:
           sdks-branch: main
 
       - name: Build ReturnYTCast
+        id: build
         run: |
           make clean
           make package FINALPACKAGE=1
 
-      - name: Prepare release files
+          PACKAGE_VERSION=$(grep '^Version:' control | cut -d' ' -f2)
+          echo "PACKAGE_VERSION=$PACKAGE_VERSION" >> "$GITHUB_OUTPUT"
+
+          echo "Built ReturnYTCast v$PACKAGE_VERSION"
+
+      - name: Prepare Release Files
         run: |
           mkdir -p release
 
@@ -48,7 +52,7 @@ jobs:
 
           ls -lah release
 
-      - name: Upload build artifact
+      - name: Upload Build Artifact
         uses: actions/upload-artifact@v4
         with:
           name: ReturnYTCast
@@ -56,10 +60,13 @@ jobs:
             release/ReturnYTCast.dylib
             release/ReturnYTCast.plist
 
-      - name: Create GitHub Release
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
+      - name: Create Release
+        uses: softprops/action-gh-release@v2.0.5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
+          tag_name: v${{ steps.build.outputs.PACKAGE_VERSION }}
+          name: ReturnYTCast v${{ steps.build.outputs.PACKAGE_VERSION }}
           files: |
             release/ReturnYTCast.dylib
             release/ReturnYTCast.plist
