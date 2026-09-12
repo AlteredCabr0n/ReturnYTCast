@@ -3,8 +3,11 @@ name: Build ReturnYTCast
 on:
   workflow_dispatch:
   push:
-    branches:
-      - main
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -22,12 +25,42 @@ jobs:
           sdks-src: waruhachi/sdks
           sdks-branch: main
 
-      - name: Build
+      - name: Build ReturnYTCast
         run: |
-          make clean package FINALPACKAGE=1
+          make clean
+          make package FINALPACKAGE=1
 
-      - name: Upload package
+      - name: Prepare release files
+        run: |
+          mkdir -p release
+
+          DYLIB=$(find .theos -name "ReturnYTCast.dylib" -type f | head -1)
+
+          if [ -z "$DYLIB" ]; then
+            echo "ReturnYTCast.dylib not found"
+            exit 1
+          fi
+
+          echo "Found dylib: $DYLIB"
+
+          cp "$DYLIB" release/ReturnYTCast.dylib
+          cp ReturnYTCast.plist release/ReturnYTCast.plist
+
+          ls -lah release
+
+      - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
           name: ReturnYTCast
-          path: packages/*.deb
+          path: |
+            release/ReturnYTCast.dylib
+            release/ReturnYTCast.plist
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release/ReturnYTCast.dylib
+            release/ReturnYTCast.plist
+          generate_release_notes: true
