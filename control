@@ -1,0 +1,9 @@
+Package: com.kdot.returnytcast
+Name: ReturnYTCast
+Version: 0.1.0
+Architecture: iphoneos-arm
+Description: Restores YouTube's Cast button to the Home top bar.
+Maintainer: kDot
+Author: kDot
+Section: Tweaks
+Depends: mobilesubstrate
