@@ -68,6 +68,7 @@ jobs:
           tag_name: v${{ steps.build.outputs.PACKAGE_VERSION }}
           name: ReturnYTCast v${{ steps.build.outputs.PACKAGE_VERSION }}
           files: |
+          draft: true
             release/ReturnYTCast.dylib
             release/ReturnYTCast.plist
           generate_release_notes: true
