@@ -1,17 +1,28 @@
 TARGET := iphone:clang:latest:15.0
-ARCHS = arm64
+ARCHS := arm64
 
-INSTALL_TARGET_PROCESSES = YouTube
-
-THEOS_PACKAGE_SCHEME = rootless
 FINALPACKAGE = 1
 
 include $(THEOS)/makefiles/common.mk
 
-TWEAK_NAME = ReturnYTCast
+LIBRARY_NAME := ReturnYTCast
 
-ReturnYTCast_FILES = Tweak.xm
-ReturnYTCast_FRAMEWORKS = UIKit Foundation
-ReturnYTCast_CFLAGS = -fobjc-arc
+ReturnYTCast_FILES := Tweak.xm
 
-include $(THEOS_MAKE_PATH)/tweak.mk
+ReturnYTCast_CFLAGS := \
+	-fobjc-arc \
+	-DTHEOS_LEAN_AND_MEAN=1
+
+ReturnYTCast_FRAMEWORKS := UIKit Foundation
+
+ReturnYTCast_LDFLAGS += \
+	-ObjC \
+	-Wl,-not_for_dyld_shared_cache \
+	-undefined dynamic_lookup \
+	-Wl,-undefined,dynamic_lookup
+
+ReturnYTCast_INSTALL_PATH = /usr/lib
+
+LEAN_AND_MEAN = 1
+
+include $(THEOS_MAKE_PATH)/library.mk
