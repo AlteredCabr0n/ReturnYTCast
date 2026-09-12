@@ -1,0 +1,9 @@
+Package: com.altc.returnytcast
+Name: ReturnYTCast
+Version: 1.0.0
+Architecture: iphoneos-arm
+Description: Restores the YouTube Cast button to the Home screen.
+Maintainer: altc
+Author: altc
+Section: Tweaks
+Depends: ellekit
