@@ -11,3 +11,11 @@
 }
 
 %end
+
+%hook MDXPlaybackRouteButtonController
+
+- (BOOL)isPersistentCastIconEnabled {
+    return YES;
+}
+
+%end
