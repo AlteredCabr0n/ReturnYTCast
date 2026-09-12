@@ -1,134 +1,248 @@
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
+#import <objc/message.h>
 
 %config(generator=internal)
 
 static char kReturnYTCastButtonKey;
 static char kReturnYTCastControllerKey;
 
+#pragma mark - Helpers
+
 static id FindMDXController(UIViewController *vc) {
+    if (!vc) return nil;
+
     Class cls = objc_getClass("MDXPlaybackRouteButtonController");
     if (!cls) return nil;
 
-    // Try an existing MDX controller already owned somewhere in the VC tree.
-    for (UIViewController *child in vc.childViewControllers) {
-        if ([child isKindOfClass:cls]) return child;
+    if ([vc isKindOfClass:cls])
+        return vc;
 
+    for (UIViewController *child in vc.childViewControllers) {
         id found = FindMDXController(child);
+        if (found) return found;
+    }
+
+    if (vc.presentedViewController) {
+        id found = FindMDXController(vc.presentedViewController);
         if (found) return found;
     }
 
     return nil;
 }
 
-static void ReturnYTCastPressed(UIButton *sender) {
-    UIViewController *vc = sender.window.rootViewController;
+static UIViewController *TopViewController(void) {
+    UIWindow *window = nil;
+
+    for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
+        if (scene.activationState == UISceneActivationStateForegroundActive &&
+            [scene isKindOfClass:UIWindowScene.class]) {
+
+            for (UIWindow *candidate in ((UIWindowScene *)scene).windows) {
+                if (candidate.isKeyWindow) {
+                    window = candidate;
+                    break;
+                }
+            }
+        }
+
+        if (window)
+            break;
+    }
+
+    if (!window)
+        window = UIApplication.sharedApplication.windows.firstObject;
+
+    UIViewController *vc = window.rootViewController;
 
     while (vc.presentedViewController)
         vc = vc.presentedViewController;
 
-    id controller = FindMDXController(vc);
+    if ([vc isKindOfClass:UINavigationController.class])
+        vc = ((UINavigationController *)vc).visibleViewController;
+
+    if ([vc isKindOfClass:UITabBarController.class])
+        vc = ((UITabBarController *)vc).selectedViewController;
+
+    return vc;
+}
+
+static void ReturnYTCastPressed(UIButton *sender) {
+    UIViewController *root = TopViewController();
+
+    id controller = FindMDXController(root);
 
     if (!controller) {
         Class cls = objc_getClass("MDXPlaybackRouteButtonController");
-        if (!cls) return;
+        if (!cls)
+            return;
 
         controller = [[cls alloc] init];
-        objc_setAssociatedObject(sender,
-                                 &kReturnYTCastControllerKey,
-                                 controller,
-                                 OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+
+        objc_setAssociatedObject(
+            sender,
+            &kReturnYTCastControllerKey,
+            controller,
+            OBJC_ASSOCIATION_RETAIN_NONATOMIC
+        );
     }
 
     SEL selector = NSSelectorFromString(@"didPressButton:");
 
     if ([controller respondsToSelector:selector]) {
-        ((void (*)(id, SEL, id))objc_msgSend)(controller,
-                                              selector,
-                                              sender);
+        ((void (*)(id, SEL, id))objc_msgSend)(
+            controller,
+            selector,
+            sender
+        );
     }
 }
 
-static BOOL IsLikelyHeaderActionButton(UIView *view) {
+static BOOL IsLikelyTopBarButton(UIView *view) {
     if (![view isKindOfClass:UIButton.class])
         return NO;
 
-    CGRect f = view.frame;
+    CGRect frame = view.frame;
 
-    // Right-hand Home header icons.
-    return f.size.width >= 25.0 &&
-           f.size.width <= 70.0 &&
-           f.size.height >= 25.0 &&
-           f.size.height <= 70.0;
+    return frame.size.width >= 24.0 &&
+           frame.size.width <= 80.0 &&
+           frame.size.height >= 24.0 &&
+           frame.size.height <= 80.0;
+}
+
+static NSArray<UIButton *> *FindHeaderButtons(UIView *view) {
+    NSMutableArray<UIButton *> *buttons = [NSMutableArray array];
+
+    for (UIView *subview in view.subviews) {
+        if (IsLikelyTopBarButton(subview))
+            [buttons addObject:(UIButton *)subview];
+
+        [buttons addObjectsFromArray:FindHeaderButtons(subview)];
+    }
+
+    return buttons;
 }
 
 static void AddReturnYTCastButton(UIView *headerView) {
-    if (!headerView || objc_getAssociatedObject(headerView, &kReturnYTCastButtonKey))
+    if (!headerView)
         return;
 
-    NSMutableArray<UIButton *> *buttons = [NSMutableArray array];
+    UIButton *existing = objc_getAssociatedObject(
+        headerView,
+        &kReturnYTCastButtonKey
+    );
 
-    for (UIView *subview in headerView.subviews) {
-        if (IsLikelyHeaderActionButton(subview))
-            [buttons addObject:(UIButton *)subview];
+    if (existing && existing.superview)
+        return;
+
+    NSArray<UIButton *> *allButtons = FindHeaderButtons(headerView);
+
+    NSMutableArray<UIButton *> *rightSideButtons = [NSMutableArray array];
+
+    CGFloat midpoint = CGRectGetMidX(headerView.bounds);
+
+    for (UIButton *button in allButtons) {
+        CGRect frame = [button.superview convertRect:button.frame
+                                              toView:headerView];
+
+        if (CGRectGetMidX(frame) > midpoint)
+            [rightSideButtons addObject:button];
     }
 
-    if (buttons.count == 0)
+    if (rightSideButtons.count == 0)
         return;
 
-    // Sort right-side buttons from left → right.
-    [buttons sortUsingComparator:^NSComparisonResult(UIButton *a, UIButton *b) {
-        if (CGRectGetMinX(a.frame) < CGRectGetMinX(b.frame))
+    [rightSideButtons sortUsingComparator:^NSComparisonResult(
+        UIButton *a,
+        UIButton *b
+    ) {
+        CGRect af = [a.superview convertRect:a.frame toView:headerView];
+        CGRect bf = [b.superview convertRect:b.frame toView:headerView];
+
+        if (CGRectGetMinX(af) < CGRectGetMinX(bf))
             return NSOrderedAscending;
-        if (CGRectGetMinX(a.frame) > CGRectGetMinX(b.frame))
+
+        if (CGRectGetMinX(af) > CGRectGetMinX(bf))
             return NSOrderedDescending;
+
         return NSOrderedSame;
     }];
 
-    // Existing left-most right-side icon should be the Chat button.
-    UIButton *chatButton = buttons.firstObject;
+    /*
+     Expected order on Home:
+     Chat | Notifications | Search
+
+     Therefore firstObject is the Chat button.
+    */
+    UIButton *chatButton = rightSideButtons.firstObject;
+
+    UIView *container = chatButton.superview ?: headerView;
+
+    CGRect chatFrame = chatButton.frame;
 
     UIButton *castButton = [UIButton buttonWithType:UIButtonTypeSystem];
 
-    UIImage *castImage = nil;
+    UIImage *image = nil;
 
-    if (@available(iOS 13.0, *)) {
-        castImage = [UIImage systemImageNamed:@"airplayvideo"];
-    }
+    if (@available(iOS 13.0, *))
+        image = [UIImage systemImageNamed:@"airplayvideo"];
 
-    [castButton setImage:castImage forState:UIControlStateNormal];
-    castButton.tintColor = chatButton.tintColor ?: UIColor.whiteColor;
+    [castButton setImage:image forState:UIControlStateNormal];
 
-    castButton.frame = chatButton.frame;
+    castButton.tintColor =
+        chatButton.tintColor ?: UIColor.whiteColor;
 
-    CGFloat spacing = 12.0;
+    castButton.frame = chatFrame;
+
+    CGFloat spacing = 8.0;
+
     castButton.frame = CGRectOffset(
         castButton.frame,
-        -(CGRectGetWidth(chatButton.frame) + spacing),
+        -(CGRectGetWidth(chatFrame) + spacing),
         0
     );
+
+    castButton.accessibilityLabel = @"Cast";
+    castButton.accessibilityIdentifier = @"com.altc.returnytcast";
 
     [castButton addTarget:nil
                    action:@selector(returnYTCastTapped:)
          forControlEvents:UIControlEventTouchUpInside];
 
-    [headerView addSubview:castButton];
+    [container addSubview:castButton];
 
-    objc_setAssociatedObject(headerView,
-                             &kReturnYTCastButtonKey,
-                             castButton,
-                             OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    objc_setAssociatedObject(
+        headerView,
+        &kReturnYTCastButtonKey,
+        castButton,
+        OBJC_ASSOCIATION_RETAIN_NONATOMIC
+    );
 }
 
-%hook UIResponder
+#pragma mark - Cast visibility hooks
 
-%new
-- (void)returnYTCastTapped:(UIButton *)sender {
-    ReturnYTCastPressed(sender);
+%hook YTIIosMainBrowseEndpointTopBarConfig
+
+- (BOOL)removeCastButtonFromTopbar {
+    return NO;
+}
+
+- (BOOL)hasRemoveCastButtonFromTopbar {
+    return YES;
 }
 
 %end
 
+
+%hook MDXPlaybackRouteButtonController
+
+- (BOOL)isPersistentCastIconEnabled {
+    return YES;
+}
+
+%end
+
+#pragma mark - Home header
 
 %hook YTHeaderViewController
 
@@ -146,6 +260,17 @@ static void AddReturnYTCastButton(UIView *headerView) {
     dispatch_async(dispatch_get_main_queue(), ^{
         AddReturnYTCastButton(self.view);
     });
+}
+
+%end
+
+#pragma mark - Button action
+
+%hook UIResponder
+
+%new
+- (void)returnYTCastTapped:(UIButton *)sender {
+    ReturnYTCastPressed(sender);
 }
 
 %end
