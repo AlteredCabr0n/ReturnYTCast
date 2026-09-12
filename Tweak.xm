@@ -4,10 +4,11 @@
 
 %config(generator=internal)
 
+@interface YTHeaderViewController : UIViewController
+@end
+
 static char kReturnYTCastButtonKey;
 static char kReturnYTCastControllerKey;
-
-#pragma mark - Helpers
 
 static id FindMDXController(UIViewController *vc) {
     if (!vc) return nil;
@@ -35,23 +36,30 @@ static UIViewController *TopViewController(void) {
     UIWindow *window = nil;
 
     for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
-        if (scene.activationState == UISceneActivationStateForegroundActive &&
-            [scene isKindOfClass:UIWindowScene.class]) {
+        if (scene.activationState != UISceneActivationStateForegroundActive)
+            continue;
 
-            for (UIWindow *candidate in ((UIWindowScene *)scene).windows) {
-                if (candidate.isKeyWindow) {
-                    window = candidate;
-                    break;
-                }
+        if (![scene isKindOfClass:UIWindowScene.class])
+            continue;
+
+        UIWindowScene *windowScene = (UIWindowScene *)scene;
+
+        for (UIWindow *candidate in windowScene.windows) {
+            if (candidate.isKeyWindow) {
+                window = candidate;
+                break;
             }
         }
+
+        if (!window)
+            window = windowScene.windows.firstObject;
 
         if (window)
             break;
     }
 
     if (!window)
-        window = UIApplication.sharedApplication.windows.firstObject;
+        return nil;
 
     UIViewController *vc = window.rootViewController;
 
@@ -136,7 +144,6 @@ static void AddReturnYTCastButton(UIView *headerView) {
         return;
 
     NSArray<UIButton *> *allButtons = FindHeaderButtons(headerView);
-
     NSMutableArray<UIButton *> *rightSideButtons = [NSMutableArray array];
 
     CGFloat midpoint = CGRectGetMidX(headerView.bounds);
@@ -168,37 +175,22 @@ static void AddReturnYTCastButton(UIView *headerView) {
         return NSOrderedSame;
     }];
 
-    /*
-     Expected order on Home:
-     Chat | Notifications | Search
-
-     Therefore firstObject is the Chat button.
-    */
     UIButton *chatButton = rightSideButtons.firstObject;
-
     UIView *container = chatButton.superview ?: headerView;
 
     CGRect chatFrame = chatButton.frame;
 
     UIButton *castButton = [UIButton buttonWithType:UIButtonTypeSystem];
 
-    UIImage *image = nil;
-
-    if (@available(iOS 13.0, *))
-        image = [UIImage systemImageNamed:@"airplayvideo"];
-
+    UIImage *image = [UIImage systemImageNamed:@"airplayvideo"];
     [castButton setImage:image forState:UIControlStateNormal];
 
     castButton.tintColor =
         chatButton.tintColor ?: UIColor.whiteColor;
 
-    castButton.frame = chatFrame;
-
-    CGFloat spacing = 8.0;
-
     castButton.frame = CGRectOffset(
-        castButton.frame,
-        -(CGRectGetWidth(chatFrame) + spacing),
+        chatFrame,
+        -(CGRectGetWidth(chatFrame) + 8.0),
         0
     );
 
@@ -219,8 +211,6 @@ static void AddReturnYTCastButton(UIView *headerView) {
     );
 }
 
-#pragma mark - Cast visibility hooks
-
 %hook YTIIosMainBrowseEndpointTopBarConfig
 
 - (BOOL)removeCastButtonFromTopbar {
@@ -233,7 +223,6 @@ static void AddReturnYTCastButton(UIView *headerView) {
 
 %end
 
-
 %hook MDXPlaybackRouteButtonController
 
 - (BOOL)isPersistentCastIconEnabled {
@@ -241,8 +230,6 @@ static void AddReturnYTCastButton(UIView *headerView) {
 }
 
 %end
-
-#pragma mark - Home header
 
 %hook YTHeaderViewController
 
@@ -263,8 +250,6 @@ static void AddReturnYTCastButton(UIView *headerView) {
 }
 
 %end
-
-#pragma mark - Button action
 
 %hook UIResponder
 
